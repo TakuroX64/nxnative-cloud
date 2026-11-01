@@ -61,12 +61,23 @@ jobs:
           curl -L "${{ inputs.keys_url }}" -o "$RUNNER_TEMP/keys/prod.keys"
           head -n 3 "$RUNNER_TEMP/keys/prod.keys" | grep -q "=" || (echo "Invalid prod.keys URL!" && exit 1)
 
-          echo "Downloading Base NSP..."
-          gdown --fuzzy "${{ inputs.base_rom_url }}" -O "$RUNNER_TEMP/game/base.nsp"
+          cd "$RUNNER_TEMP/game"
+          echo "Downloading Base Game..."
+          BASE_ID=$(echo "${{ inputs.base_rom_url }}" | sed -n 's/.*\/d\/\([^/?]*\).*/\1/p')
+          if [ -n "$BASE_ID" ]; then
+            gdown "$BASE_ID"
+          else
+            gdown "${{ inputs.base_rom_url }}"
+          fi
 
           if [ -n "${{ inputs.update_rom_url }}" ]; then
-            echo "Downloading Update NSP..."
-            gdown --fuzzy "${{ inputs.update_rom_url }}" -O "$RUNNER_TEMP/game/update.nsp"
+            echo "Downloading Update..."
+            UPD_ID=$(echo "${{ inputs.update_rom_url }}" | sed -n 's/.*\/d\/\([^/?]*\).*/\1/p')
+            if [ -n "$UPD_ID" ]; then
+              gdown "$UPD_ID"
+            else
+              gdown "${{ inputs.update_rom_url }}"
+            fi
           fi
           ls -lh "$RUNNER_TEMP/game"
 
