@@ -1,0 +1,92 @@
+name: Build Native Switch IPA (A16 Fork)
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'App Name on Home Screen (e.g. Zelda BotW or Silksong)'
+        required: true
+        default: 'Zelda BotW'
+        type: string
+      base_rom_url:
+        description: 'Google Drive Link or Direct URL for Base .nsp/.nsz'
+        required: true
+        type: string
+      update_rom_url:
+        description: 'Google Drive Link or Direct URL for Update .nsp/.nsz (Optional)'
+        required: false
+        type: string
+      keys_url:
+        description: 'Direct Raw URL for prod.keys (e.g. Gist Raw URL)'
+        required: true
+        type: string
+      split_romfs:
+        description: 'Split RomFS from IPA? (Use true for BotW, false for Silksong)'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  build_native_ipa:
+    runs-on: macos-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Free Runner Disk Space (45GB+ Required for BotW)
+        run: |
+          sudo rm -rf /Applications/Xcode_15*.app /Library/Developer/CommandLineTools /usr/local/share/android* || true
+          df -h
+
+      - name: Checkout A16-Patched nxnative (BC-to-ASTC Fork)
+        uses: actions/checkout@v4
+        with:
+          repository: mianmuhammadse/nxnative
+          ref: no-bc
+          submodules: recursive
+
+      - name: Install Xcode Metal Toolchain & Dependencies
+        run: |
+          xcodebuild -downloadComponent MetalToolchain || true
+          brew install xcodegen zstd glslang
+          brew install --cask dotnet-sdk
+          python3 -m pip install --upgrade pip
+          python3 -m pip install gdown lz4 "capstone>=5,<6" fonttools nsz zbic "backports.zstd; python_version < '3.14'"
+
+      - name: Download Keys & NSP Files
+        run: |
+          mkdir -p "$RUNNER_TEMP/game" "$RUNNER_TEMP/keys"
+          curl -L "${{ inputs.keys_url }}" -o "$RUNNER_TEMP/keys/prod.keys"
+          head -n 3 "$RUNNER_TEMP/keys/prod.keys" | grep -q "=" || (echo "Invalid prod.keys URL!" && exit 1)
+
+          echo "Downloading Base NSP..."
+          gdown --fuzzy "${{ inputs.base_rom_url }}" -O "$RUNNER_TEMP/game/base.nsp"
+
+          if [ -n "${{ inputs.update_rom_url }}" ]; then
+            echo "Downloading Update NSP..."
+            gdown --fuzzy "${{ inputs.update_rom_url }}" -O "$RUNNER_TEMP/game/update.nsp"
+          fi
+          ls -lh "$RUNNER_TEMP/game"
+
+      - name: Compile Native iOS IPA
+        run: |
+          ROMFS_FLAG=""
+          if [ "${{ inputs.split_romfs }}" = "true" ]; then
+            ROMFS_FLAG="--romfs separate"
+          fi
+          python3 scripts/build_ipa_from_nsp.py "$RUNNER_TEMP/game" \
+            -k "$RUNNER_TEMP/keys/prod.keys" \
+            -o "$RUNNER_TEMP/OutputGame.ipa" \
+            --app-name "${{ inputs.app_name }}" \
+            $ROMFS_FLAG
+
+      - name: Upload Compiled IPA & Game Data
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.app_name }}-iOS-Build
+          path: |
+            ${{ runner.temp }}/OutputGame.ipa
+            ${{ runner.temp }}/game-work/**
+          retention-days: 1
