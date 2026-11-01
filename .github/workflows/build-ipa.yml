@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - name: Free Runner Disk Space (45GB+ Required for BotW)
+      - name: Free Runner Disk Space
         run: |
           sudo rm -rf /Applications/Xcode_15*.app /Library/Developer/CommandLineTools /usr/local/share/android* || true
           df -h
@@ -47,7 +47,7 @@ jobs:
           ref: no-bc
           submodules: recursive
 
-- name: Install Xcode Metal Toolchain & Dependencies
+      - name: Install Xcode Metal Toolchain & Dependencies
         run: |
           xcodebuild -downloadComponent MetalToolchain || true
           brew install xcodegen zstd glslang
@@ -55,7 +55,6 @@ jobs:
           python3 -m pip install --break-system-packages --upgrade pip
           python3 -m pip install --break-system-packages gdown lz4 "capstone>=5,<6" fonttools nsz zbic "backports.zstd; python_version < '3.14'"
 
-          
       - name: Download Keys & NSP Files
         run: |
           mkdir -p "$RUNNER_TEMP/game" "$RUNNER_TEMP/keys"
