@@ -47,8 +47,14 @@ jobs:
           ref: no-bc
           submodules: recursive
 
-      - name: Install Xcode Metal Toolchain & Dependencies
+      - name: Select Xcode 27.2 (If Available) & Install Dependencies
         run: |
+          if [ -d "/Applications/Xcode_27.2.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_27.2.app
+          elif [ -d "/Applications/Xcode-27.2.app" ]; then
+            sudo xcode-select -s /Applications/Xcode-27.2.app
+          fi
+          xcodebuild -version
           xcodebuild -downloadComponent MetalToolchain || true
           brew install xcodegen zstd glslang sevenzip
           brew install --cask dotnet-sdk
@@ -109,13 +115,15 @@ jobs:
             ENV_FLAG="--env-file $RUNNER_TEMP/a16_env.txt"
           fi
 
-          DM_ENV_FILE="$RUNNER_TEMP/a16_env.txt" python3 scripts/build_ipa_from_nsp.py "$RUNNER_TEMP/game" \
+          ALLOW_OTHER_METAL=1 DM_ENV_FILE="$RUNNER_TEMP/a16_env.txt" python3 scripts/build_ipa_from_nsp.py "$RUNNER_TEMP/game" \
             -k "$RUNNER_TEMP/keys/prod.keys" \
             -o "$RUNNER_TEMP/OutputGame.ipa" \
             --app-name "${{ inputs.app_name }}" \
-            $ROMFS_FLAG $ENV_FLAG
+            --allow-other-metal \
+            $ROMFS_FLAG$ENV_FLAG
 
-          ls -lh "$RUNNER_TEMP" "$RUNNER_TEMP/game"
+          rm -f "$RUNNER_TEMP/game"/*.nsp "$RUNNER_TEMP/game"/*.nsz
+          find "$RUNNER_TEMP" -maxdepth 3
 
       - name: Upload Compiled IPA
         uses: actions/upload-artifact@v4
@@ -132,7 +140,13 @@ jobs:
         with:
           name: ${{ inputs.app_name }}-RomFS-Data
           path: |
+            ${{ runner.temp }}/*romfs*
+            ${{ runner.temp }}/*RomFS*
+            ${{ runner.temp }}/*.img
+            ${{ runner.temp }}/game/*romfs*
+            ${{ runner.temp }}/game/*RomFS*
             ${{ runner.temp }}/game/*.img
-            ${{ runner.temp }}/game-work/**/RomFS*
-            ${{ runner.temp }}/game-work/**/romfs*
-          retention-days: 1
+            ${{ runner.temp }}/game/*_build/*romfs*
+            ${{ runner.temp }}/game/*_build/*RomFS*
+            ${{ runner.temp }}/game/*_build/*.img
+          retention-days:
