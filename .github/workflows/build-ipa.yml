@@ -105,6 +105,16 @@ jobs:
 
       - name: Compile Native iOS IPA
         run: |
+          python3 -c '
+          import pathlib
+          for p in pathlib.Path(".").rglob("*.[mh]"):
+              t = p.read_text(errors="ignore")
+              if "colorContentOffsetX" in t:
+                  for k in ("colorContentOffsetX", "depthContentOffsetX", "motionContentOffsetX", "outputOffsetX"):
+                      t = "\n".join("//" + l if k in l else l for l in t.splitlines())
+                  p.write_text(t)
+          '
+
           ROMFS_MODE="bundle"
           if [ "${{ inputs.split_romfs }}" = "true" ]; then
             ROMFS_MODE="separate"
@@ -115,11 +125,26 @@ jobs:
             -o "$RUNNER_TEMP/OutputGame.ipa" \
             --app-name "${{ inputs.app_name }}" \
             --allow-other-metal \
+            --gpu none \
             --romfs "$ROMFS_MODE" \
             --env-file "$RUNNER_TEMP/a16_env.txt"
 
           rm -f "$RUNNER_TEMP/game"/*.nsp "$RUNNER_TEMP/game"/*.nsz
-          find "$RUNNER_TEMP" -maxdepth 3
+
+      - name: Upload Compiled IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.app_name }}-IPA
+          path: ${{ runner.temp }}/OutputGame.ipa
+          retention-days: 1
+
+      - name: Upload Split RomFS Game Data
+        if: inputs.split_romfs == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.app_name }}-RomFS-Data
+          path: ${{ runner.temp }}/game/*_build/extract/*/RomFS.img
+          retention-days: 1
 
       - name: Upload Compiled IPA
         uses: actions/upload-artifact@v4
