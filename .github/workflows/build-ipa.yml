@@ -4,16 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       app_name:
-        description: 'App Name on Home Screen (e.g. Zelda BotW or Silksong)'
+        description: 'App Name on Home Screen'
         required: true
         default: 'Zelda BotW'
         type: string
       base_rom_url:
-        description: 'Google Drive Link or Direct URL for Base .nsp/.nsz'
+        description: 'Google Drive Link for Base Game (.nsp / .nsz / .zip)'
         required: true
         type: string
       update_rom_url:
-        description: 'Google Drive Link or Direct URL for Update .nsp/.nsz (Optional)'
+        description: 'Google Drive Link for Update 1.9.0 (.nsp / .nsz / .zip)'
         required: false
         type: string
       keys_url:
@@ -21,7 +21,7 @@ on:
         required: true
         type: string
       split_romfs:
-        description: 'Split RomFS from IPA? (Use true for BotW, false for Silksong)'
+        description: 'Split RomFS from IPA? (Keep true for BotW)'
         required: true
         default: 'true'
         type: choice
@@ -32,7 +32,7 @@ on:
 jobs:
   build_native_ipa:
     runs-on: macos-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
       - name: Free Runner Disk Space
@@ -50,7 +50,7 @@ jobs:
       - name: Install Xcode Metal Toolchain & Dependencies
         run: |
           xcodebuild -downloadComponent MetalToolchain || true
-          brew install xcodegen zstd glslang
+          brew install xcodegen zstd glslang sevenzip
           brew install --cask dotnet-sdk
           python3 -m pip install --break-system-packages --upgrade pip
           python3 -m pip install --break-system-packages gdown lz4 "capstone>=5,<6" fonttools nsz zbic "backports.zstd; python_version < '3.14'"
@@ -79,7 +79,25 @@ jobs:
               gdown "${{ inputs.update_rom_url }}"
             fi
           fi
+
+          # Auto-extract if the downloaded files are inside .zip, .7z, or .rar archives
+          for archive in *.zip *.7z *.rar; do
+            if [ -f "$archive" ]; then
+              echo "Extracting $archive..."
+              7zz x "$archive" -y
+              rm -f "$archive"
+            fi
+          done
+
           ls -lh "$RUNNER_TEMP/game"
+
+      - name: Create A16 Memory-Safe Environment Config
+        run: |
+          cat << 'EOF' > "$RUNNER_TEMP/a16_env.txt"
+          DM_OPMODE=0
+          DM_RENDER_SCALE=0.5
+          DM_FPS_TARGET=30
+          EOF
 
       - name: Compile Native iOS IPA
         run: |
@@ -87,17 +105,37 @@ jobs:
           if [ "${{ inputs.split_romfs }}" = "true" ]; then
             ROMFS_FLAG="--romfs separate"
           fi
-          python3 scripts/build_ipa_from_nsp.py "$RUNNER_TEMP/game" \
+
+          # Check if --env-file is supported by this revision of build_ipa_from_nsp.py
+          ENV_FLAG=""
+          if python3 scripts/build_ipa_from_nsp.py -h | grep -q -- "--env-file"; then
+            ENV_FLAG="--env-file $RUNNER_TEMP/a16_env.txt"
+          fi
+
+          DM_ENV_FILE="$RUNNER_TEMP/a16_env.txt" python3 scripts/build_ipa_from_nsp.py "$RUNNER_TEMP/game" \
             -k "$RUNNER_TEMP/keys/prod.keys" \
             -o "$RUNNER_TEMP/OutputGame.ipa" \
             --app-name "${{ inputs.app_name }}" \
-            $ROMFS_FLAG
+            $ROMFS_FLAG $ENV_FLAG
 
-      - name: Upload Compiled IPA & Game Data
+          ls -lh "$RUNNER_TEMP" "$RUNNER_TEMP/game"
+
+      - name: Upload Compiled IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.app_name }}-iOS-Build
+          name: ${{ inputs.app_name }}-IPA
           path: |
             ${{ runner.temp }}/OutputGame.ipa
-            ${{ runner.temp }}/game-work/**
+            ${{ runner.temp }}/game/*.ipa
+          retention-days: 1
+
+      - name: Upload Split RomFS Game Data
+        if: inputs.split_romfs == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.app_name }}-RomFS-Data
+          path: |
+            ${{ runner.temp }}/game/*.img
+            ${{ runner.temp }}/game-work/**/RomFS*
+            ${{ runner.temp }}/game-work/**/romfs*
           retention-days: 1
