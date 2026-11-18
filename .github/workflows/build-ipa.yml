@@ -60,26 +60,31 @@ jobs:
 
       - name: Download Keys & NSP Files via Drive API
         run: |
-          mkdir -p "$RUNNER_TEMP/game" "$RUNNER_TEMP/keys"
+          mkdir -p "$RUNNER_TEMP/game" "$RUNNER_TEMP/keys" ~/.switch
           curl -fL "${{ inputs.keys_url }}" -o "$RUNNER_TEMP/keys/prod.keys"
           head -n 3 "$RUNNER_TEMP/keys/prod.keys" | grep -q "=" || (echo "Invalid prod.keys URL!" && exit 1)
+          cp "$RUNNER_TEMP/keys/prod.keys" ~/.switch/prod.keys
 
           cd "$RUNNER_TEMP/game"
-          BASE_ID=$(echo "${{ inputs.base_rom_url }}" | sed -n 's/.*\/d\/\([^/?]*\).*/\1/p')
-          curl -fL -H "Authorization: Bearer ${{ inputs.gdrive_token }}" \
-            "https://www.googleapis.com/drive/v3/files/${BASE_ID}?alt=media&acknowledgeAbuse=true" \
-            -o "base.nsp"
 
-          if [ -n "${{ inputs.update_rom_url }}" ]; then
-            UPD_ID=$(echo "${{ inputs.update_rom_url }}" | sed -n 's/.*\/d\/\([^/?]*\).*/\1/p')
+          download_gdrive() {
+            local FILE_ID=$(echo "$1" | sed -n 's/.*\/d\/\([^/?]*\).*/\1/p')
+            local FILE_NAME=$(curl -s -H "Authorization: Bearer ${{ inputs.gdrive_token }}" \
+              "https://www.googleapis.com/drive/v3/files/${FILE_ID}?fields=name" | \
+              python3 -c "import sys,json; print(json.load(sys.stdin).get('name', '$2'))")
             curl -fL -H "Authorization: Bearer ${{ inputs.gdrive_token }}" \
-              "https://www.googleapis.com/drive/v3/files/${UPD_ID}?alt=media&acknowledgeAbuse=true" \
-              -o "update.nsp"
+              "https://www.googleapis.com/drive/v3/files/${FILE_ID}?alt=media&acknowledgeAbuse=true" \
+              -o "$FILE_NAME"
+          }
+
+          download_gdrive "${{ inputs.base_rom_url }}" "base.nsp"
+          if [ -n "${{ inputs.update_rom_url }}" ]; then
+            download_gdrive "${{ inputs.update_rom_url }}" "update.nsp"
           fi
 
           for archive in *.zip *.7z *.rar; do
             if [ -f "$archive" ]; then
-              7zz x "$archive" -y
+              7zz e "$archive" -y
               rm -f "$archive"
             fi
           done
