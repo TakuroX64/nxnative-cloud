@@ -101,21 +101,14 @@ jobs:
       - name: Compile Native iOS IPA
         run: |
           python3 -c '
-          import pathlib
-          keys = (
-              "colorContentOffsetX",
-              "depthContentOffsetX",
-              "motionContentOffsetX",
-              "outputOffsetX",
-              "reactiveMaskTextureUsage",
-              "reactiveMaskContentOffsetX",
-              "reactiveMaskContentOffsetY",
-          )
+          import pathlib, re
           for ext in ("*.m", "*.mm", "*.h", "*.c", "*.cpp"):
               for p in pathlib.Path(".").rglob(ext):
                   t = p.read_text(errors="ignore")
-                  if any(k in t for k in keys):
-                      t = "\n".join("//" + l if any(k in l for k in keys) else l for l in t.splitlines())
+                  if "MTL4FXTemporalScaler" in t or "reactiveMask" in t or "colorContentOffsetX" in t:
+                      t = re.sub(r"if\s*\([^;{]*reactiveMaskTextureUsage[^;{]*\)\s*\{[^}]*\}", "", t, flags=re.S)
+                      for k in ("colorContentOffsetX", "depthContentOffsetX", "motionContentOffsetX", "outputOffsetX", "reactiveMaskContentOffsetX", "reactiveMaskContentOffsetY"):
+                          t = "\n".join("//" + l if k in l else l for l in t.splitlines())
                       p.write_text(t)
           '
 
