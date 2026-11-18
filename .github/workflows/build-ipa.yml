@@ -119,6 +119,22 @@ jobs:
                       p.write_text(t)
           '
 
+          ROMFS_MODE="bundle"
+          if [ "${{ inputs.split_romfs }}" = "true" ]; then
+            ROMFS_MODE="separate"
+          fi
+
+          ALLOW_OTHER_METAL=1 python3 scripts/build_ipa_from_nsp.py "$RUNNER_TEMP/game" \
+            -k "$RUNNER_TEMP/keys/prod.keys" \
+            -o "$RUNNER_TEMP/OutputGame.ipa" \
+            --app-name "${{ inputs.app_name }}" \
+            --allow-other-metal \
+            --gpu none \
+            --romfs "$ROMFS_MODE" \
+            --env-file "$RUNNER_TEMP/a16_env.txt"
+
+          rm -f "$RUNNER_TEMP/game"/*.nsp "$RUNNER_TEMP/game"/*.nsz
+
       - name: Upload Compiled IPA
         uses: actions/upload-artifact@v4
         with:
