@@ -102,11 +102,11 @@ jobs:
         run: |
           python3 -c '
           import pathlib, re
-          for ext in ("*.m", "*.mm", "*.h", "*.c", "*.cpp"):
-              for p in pathlib.Path(".").rglob(ext):
+          for p in pathlib.Path(".").rglob("*"):
+              if p.suffix in (".m", ".mm", ".h", ".c", ".cpp", ".py"):
                   t = p.read_text(errors="ignore")
-                  if "MTL4FXTemporalScaler" in t or "reactiveMask" in t or "colorContentOffsetX" in t:
-                      t = re.sub(r"if\s*\([^;{]*reactiveMaskTextureUsage[^;{]*\)\s*\{[^}]*\}", "", t, flags=re.S)
+                  if "reactiveMask" in t or "colorContentOffsetX" in t:
+                      t = re.sub(r"\b\w+\.reactiveMaskTextureUsage\b", "((MTLTextureUsage)0)", t)
                       for k in ("colorContentOffsetX", "depthContentOffsetX", "motionContentOffsetX", "outputOffsetX", "reactiveMaskContentOffsetX", "reactiveMaskContentOffsetY"):
                           t = "\n".join("//" + l if k in l else l for l in t.splitlines())
                       p.write_text(t)
@@ -124,7 +124,10 @@ jobs:
             --allow-other-metal \
             --gpu none \
             --romfs "$ROMFS_MODE" \
-            --env-file "$RUNNER_TEMP/a16_env.txt"
+            --env-file "$RUNNER_TEMP/a16_env.txt" || {
+              nl -ba dm/ios/Gen/src/gfx__nvn__nvn_mtl.m | sed -n '17495,17555p' || true
+              exit 1
+            }
 
           rm -f "$RUNNER_TEMP/game"/*.nsp "$RUNNER_TEMP/game"/*.nsz
 
